@@ -3,9 +3,10 @@ from flask import Flask, request, render_template
 import pickle
 
 # Load the pre-trained model
-model = pickle.load(open("rf_classifier_selected.pkl", "rb"))
+model = pickle.load(open("best_rf_model.pkl", "rb"))
 
-# Define the country and ethnicity encoding dictionaries
+# Define the encoding dictionaries
+austim_encoded = {'Yes': 1, 'No': 0}
 country_encoded = {
     'United States': 0,
     'Jordan': 1,
@@ -63,24 +64,13 @@ country_encoded = {
     'Burundi': 53,
     'Bangladesh': 54
 }
-
-ethnicity_encoded = {
-    'White-European': 0,
-    'Middle Eastern': 1,
-    'Pasifika': 2,
-    'Black': 3,
-    'Others': 4,
-    'Hispanic': 5,
-    'Asian': 6,
-    'Turkish': 7,
-    'South Asian': 8,
-    'Latino': 9
-}
+gender_encoded = {'Male': 1, 'Female': 0}
+jaundice_encoded = {'Yes': 1, 'No': 0}
 
 # Create Flask app
 app = Flask(__name__)
 
-#Configure the static folder
+# Configure the static folder
 app.static_folder = 'static'
 
 @app.route("/")
@@ -91,27 +81,33 @@ def home():
 def predict():
     # Extract form data
     form_data = request.form.to_dict()
-    
+
     # Convert features to encoded values
     country = form_data['country']
-    ethnicity = form_data['ethnicity']
-    
-    encoded_country = country_encoded.get(country, -1)  # -1 indicates unknown country
-    encoded_ethnicity = ethnicity_encoded.get(ethnicity, -1)  # -1 indicates unknown ethnicity
-    
-    if encoded_country == -1 or encoded_ethnicity == -1:
-        return render_template("index.html", prediction_text="Invalid country or ethnicity.")
-    
+    gender = form_data['gender']
+    austim = form_data['austim']
+
+    encoded_country = country_encoded.get(country, -1)
+    encoded_gender = gender_encoded.get(gender, -1)
+    encoded_austim = austim_encoded.get(austim, -1)
+
     # Prepare features for prediction
-    float_features = [float(form_data[feature]) for feature in form_data if feature not in ['country', 'ethnicity']]
-    features = [np.array(float_features + [encoded_country, encoded_ethnicity])]
-    
+    features = np.array([
+        float(form_data['A1_Score']),
+        float(form_data['A2_Score']),
+        float(form_data['A3_Score']),
+        encoded_austim,
+        float(form_data['age']),
+        encoded_country
+    ]).reshape(1, -1)
+
     # Make prediction
     prediction = model.predict(features)
-    
-    return render_template("index.html", prediction_text="<span style='color: orange;'>The result is {}</span>".format(prediction))
 
-
+    if prediction[0] == 1:
+        return render_template("index.html", prediction_text="<span style='color: orange;'>The person is autistic.</span>")
+    else:
+        return render_template("index.html", prediction_text="<span style='color: orange;'>The person is not autistic.</span>")
 
 if __name__ == "__main__":
     app.run(debug=True)

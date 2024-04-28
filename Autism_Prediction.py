@@ -515,10 +515,14 @@ print(xgb_confusion_matrix)
 # The following code performs hyperparameter tuning for a Random Forest classifier using grid search with cross-validation and then evaluates the best model on the testing data.
 
 # %%
+import warnings
 from sklearn.model_selection import GridSearchCV
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.datasets import make_classification
 from sklearn.model_selection import train_test_split
+
+# Suppress all warnings
+warnings.filterwarnings("ignore")
 
 # Generate synthetic data for demonstration
 X, y = make_classification(n_samples=1000, n_features=20, n_informative=10, n_classes=2, random_state=42)
@@ -528,38 +532,28 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 
 # Define the hyperparameters to tune
 param_grid = {
-    'n_estimators': [100, 200, 300],  # Number of trees in the forest
-    'max_depth': [None, 10, 20],        # Maximum depth of the trees
-    'min_samples_split': [2, 5, 10],    # Minimum number of samples required to split a node
-    'min_samples_leaf': [1, 2, 4],      # Minimum number of samples required at each leaf node
-    'max_features': ['sqrt']            # Number of features to consider when looking for the best split
+    'n_estimators': [100, 200],       # Decreasing number of trees
+    'max_depth': [None, 5, 10],        # Adjusting maximum depth of the trees
+    'min_samples_split': [2, 3],       # Adjusting minimum samples required to split a node
+    'min_samples_leaf': [1, 2],        # Adjusting minimum samples required at each leaf node
+    'max_features': ['auto', 'sqrt']   # Number of features to consider when looking for the best split
 }
 
 # Initialize Random Forest Classifier
-rf_classifier = RandomForestClassifier(random_state=42)
+rf_classifier = RandomForestClassifier(random_state=1)
 
 # Perform grid search with cross-validation
 grid_search = GridSearchCV(estimator=rf_classifier, param_grid=param_grid, cv=5, scoring='accuracy')
 grid_search.fit(X_train, y_train)
 
-# Print the best hyperparameters
-print("Best Hyperparameters:", grid_search.best_params_)
-
 # Evaluate the best model on the testing data
 best_model = grid_search.best_estimator_
-accuracy = best_model.score(X_test, y_test)
-print("Accuracy on Testing Data:", accuracy)
+training_accuracy = best_model.score(X_train, y_train)
+print("Accuracy on Training Data:", training_accuracy)
 
-
-# %%
-best_model = grid_search.best_estimator_
-y_train_pred = best_model.predict(X_train)
-train_accuracy = accuracy_score(y_train, y_train_pred)
-print("Training Accuracy:", train_accuracy)
-
-y_test_pred = best_model.predict(X_test)
-test_accuracy = accuracy_score(y_test, y_test_pred)
-print("Testing Accuracy:", test_accuracy)
+# Evaluate the best model on the testing data
+testing_accuracy = best_model.score(X_test, y_test)
+print("Accuracy on Testing Data:", testing_accuracy)
 
 
 # %% [markdown]
@@ -568,17 +562,24 @@ print("Testing Accuracy:", test_accuracy)
 # Model Effectiveness: The accuracy of 92% indicates that the model is effective at identifying patterns and relationships in the data. It demonstrates that the model has learned from the training data and can make nearly accurate predictions on new, unseen examples.
 
 # %%
-print(X_train.columns)
-
+from sklearn.feature_selection import SelectFromModel
 
 # %%
+import numpy as np
+from sklearn.datasets import make_classification
+from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.decomposition import PCA
+from sklearn.metrics import accuracy_score
 from sklearn.feature_selection import SelectFromModel
 import pandas as pd
 
+# Generate synthetic data with 17 features
+X, y = make_classification(n_samples=1000, n_features=17, n_classes=2, random_state=42)
+
 # Train a Random Forest classifier
 rf_classifier = RandomForestClassifier(n_estimators=100, random_state=42)
-rf_classifier.fit(X_train, y_train)
+rf_classifier.fit(X, y)
 
 # Calculate feature importance
 feature_importances = rf_classifier.feature_importances_
@@ -602,111 +603,82 @@ print("Top 5 Features:")
 for feature in top_features:
     print(feature)
 
-# Select features based on importance
-selected_features = SelectFromModel(rf_classifier, threshold='median')
-selected_features.fit(X_train, y_train)
+# Fit PCA to the training data
+pca = PCA(n_components=5)
+pca.fit(X)
 
-# Transform training and testing data using selected features
-X_train_selected = selected_features.transform(X_train)
-X_test_selected = selected_features.transform(X_test)
+# Get the top features contributing to each principal component
+n_top_features = 3  # Number of top features to print for each component
+for i, component in enumerate(pca.components_):
+    top_feature_indices = np.argsort(np.abs(component))[-n_top_features:]
+    top_feature_names = [feature_names[index] for index in top_feature_indices]
+    print(f"Top features for Component {i+1}: {', '.join(top_feature_names)}")
 
-# Train a new classifier using selected features
-rf_classifier_selected = RandomForestClassifier(n_estimators=100, random_state=42)
-rf_classifier_selected.fit(X_train_selected, y_train)
+# Transform the data using selected features
+X_selected = SelectFromModel(rf_classifier, threshold='median').fit_transform(X, y)
 
-# Evaluate performance on testing set
-accuracy = rf_classifier_selected.score(X_test_selected, y_test)
-print("Testing Accuracy with Selected Features:", accuracy)
+# Split data into train and test sets
+X_train, X_test, y_train, y_test = train_test_split(X_selected, y, test_size=0.2, random_state=1)
+
+# Fit a Random Forest classifier to the PCA-transformed data
+rf_pca = RandomForestClassifier(random_state=42)
+rf_pca.fit(X_train, y_train)
+y_pred_pca = rf_pca.predict(X_test)
+accuracy_pca = accuracy_score(y_test, y_pred_pca)
+print("PCA Accuracy:", accuracy_pca)
 
 
 # %%
-from sklearn.model_selection import cross_val_score
-from sklearn.feature_selection import RFE
+training_data.columns
 
+# %%
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import RandomizedSearchCV
+from scipy.stats import randint
 
-# Initialize the RandomForestClassifier
-rf_classifier = RandomForestClassifier()
+# Define X and y
+X = training_data[['A2_Score', 'austim_encoded', 'A1_Score', 'A3_Score', 'age','country_encoded']]
+y = training_data['Class/ASD']
 
-# Initialize Recursive Feature Elimination (RFE) with cross-validation
-# Set the estimator to the RandomForestClassifier and the scoring metric to accuracy
-rfe = RFE(estimator=rf_classifier, n_features_to_select=None, step=1, verbose=0)
-
-# Fit RFE to the training data
-rfe.fit(X_train, y_train)
-
-# Get the selected features
-selected_features = X.columns[rfe.support_]
-
-# Perform cross-validation with the selected features
-cv_scores = cross_val_score(rf_classifier, X_train[selected_features], y_train, cv=5, scoring='accuracy')
-
-# Calculate the mean cross-validation accuracy
-mean_cv_accuracy = np.mean(cv_scores)
-
-# Check testing accuracy using the selected features
-rf_classifier.fit(X_train[selected_features], y_train)
-test_accuracy = rf_classifier.score(X_test[selected_features], y_test)
-
-# Check the number of selected features
-num_selected_features = len(selected_features)
-
-# Return results
-results = {
-    "selected_features": selected_features,
-    "num_selected_features": num_selected_features,
-    "mean_cv_accuracy": mean_cv_accuracy,
-    "test_accuracy": test_accuracy
+# Define the parameter distributions for RandomizedSearchCV
+param_dist = {
+    'n_estimators': randint(50, 500),         # Number of trees in the forest
+    'max_depth': [None] + list(range(10, 101, 10)),  # Maximum depth of the trees
+    'min_samples_split': randint(2, 21),      # Minimum number of samples required to split a node
+    'min_samples_leaf': randint(1, 21),       # Minimum number of samples required at each leaf node
+    'max_features': ['auto', 'sqrt', 'log2', None]  # Number of features to consider at each split
 }
 
-print("Selected Features:", selected_features)
-print("Number of Selected Features:", num_selected_features)
-print("Mean Cross-Validation Accuracy with Selected Features:", mean_cv_accuracy)
-print("Testing Accuracy with Selected Features:", test_accuracy)
+# Initialize RandomizedSearchCV
+random_search = RandomizedSearchCV(estimator=RandomForestClassifier(random_state=99999),
+                                   param_distributions=param_dist, n_iter=100,
+                                   cv=5, scoring='accuracy', n_jobs=-1, random_state=42)
 
-# You can return or use the 'results' dictionary as needed
-# return results
+# Perform randomized search
+random_search.fit(X, y)
 
+# Get the best parameters and best model
+best_params = random_search.best_params_
+best_rf_model = random_search.best_estimator_
 
-# %%
-import numpy as np
-import pandas as pd
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score
-
-# Assuming X_train, X_test, y_train, and y_test are already defined
-
-# Define the selected features
-selected_features = ['A3_Score', 'A4_Score', 'A5_Score', 'A6_Score', 'age', 'result', 'country_encoded', 'ethnicity_encoded']
-
-# Filter the training and testing data to include only the selected features
-X_train_selected = X_train[selected_features]
-X_test_selected = X_test[selected_features]
-
-# Initialize and fit the RandomForestClassifier with the selected features
-rf_classifier_selected = RandomForestClassifier()
-rf_classifier_selected.fit(X_train_selected, y_train)
-
-# Make predictions on the testing data
-y_pred_selected = rf_classifier_selected.predict(X_test_selected)
-
-# Calculate the accuracy of the model with selected features
-testing_accuracy_selected = accuracy_score(y_test, y_pred_selected)
-print("Testing Accuracy with Selected Features:", testing_accuracy_selected)
+# Evaluate the best model
+y_pred_best_rf = best_rf_model.predict(X)
+accuracy_best_rf = accuracy_score(y, y_pred_best_rf)
+print(f'Best Random Forest Accuracy: {accuracy_best_rf:.2f}')
+print('Best Parameters:', best_params)
 
 
 # %% [markdown]
 # Deploying Model
+# 
 
 # %%
 import pickle
 
 # %%
-pickle.dump(rf_classifier, open('rf_classifier_selected.pkl', 'wb'))
+# Save the best model to a file
+with open('best_rf_model.pkl', 'wb') as file:
+    pickle.dump(best_rf_model, file)
 
-# %%
-# Load the model
-with open('rf_classifier_selected.pkl', 'rb') as file:
-    model = pickle.load(file)
 
 
